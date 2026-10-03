@@ -215,37 +215,7 @@ sql/grafana_queries.sql
 ```
 
 
-## 12. Real-Time Alerts
-
-The consumer generates three types of alerts:
-
-### High-value order
-
-```text
-order_value >= ₹10,000
-```
-
-### Low inventory
-
-```text
-stock_after <= reorder_level
-```
-
-### High refund
-
-```text
-refund_amount >= ₹5,000
-```
-
-All alerts are stored in:
-
-```text
-retail_alerts
-```
-
-This makes the project more than a static dashboard: it demonstrates ingestion, stream processing, persistence, monitoring and operational alerts.
-
-## 13. Business Questions
+## 12. Business Questions
 
 The dashboard can answer:
 

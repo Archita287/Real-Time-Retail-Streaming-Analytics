@@ -5,8 +5,8 @@
     "name": "adxfw",
     "namespace": "default",
     "uid": "581095c0-77d6-4273-aea1-d4c55460212a",
-    "resourceVersion": "1790968074796003",
-    "generation": 11,
+    "resourceVersion": "1791000586505998",
+    "generation": 15,
     "creationTimestamp": "2026-10-02T12:57:54Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "2824728938393600"
@@ -15,7 +15,7 @@
       "grafana.app/createdBy": "user:efwpz1e0uznk0c",
       "grafana.app/saved-from-ui": "Grafana v13.2.0 (f681b1359f)",
       "grafana.app/updatedBy": "user:efwpz1e0uznk0c",
-      "grafana.app/updatedTimestamp": "2026-10-02T19:07:54Z"
+      "grafana.app/updatedTimestamp": "2026-10-03T04:09:46Z"
     }
   },
   "spec": {
@@ -411,7 +411,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT\r\n    p.category,\r\n    ROUND(\r\n        100.0 * SUM(COALESCE(r.return_qty, 0))\r\n        / NULLIF(SUM(s.sold_qty), 0),\r\n        2\r\n    ) AS return_rate_pct\r\nFROM products p\r\n\r\nLEFT JOIN (\r\n    SELECT\r\n        s.product_id,\r\n        SUM(s.quantity) AS sold_qty\r\n    FROM sales_events s\r\n    JOIN products p2\r\n        ON s.product_id = p2.product_id\r\n    WHERE s.region REGEXP '${region:regex}'\r\n      AND p2.category REGEXP '${category:regex}'\r\n      AND s.sales_channel REGEXP '${channel:regex}'\r\n    GROUP BY s.product_id\r\n) s\r\n    ON p.product_id = s.product_id\r\n\r\nLEFT JOIN (\r\n    SELECT\r\n        r.product_id,\r\n        SUM(r.quantity_returned) AS return_qty\r\n    FROM returns_events r\r\n    JOIN products p3\r\n        ON r.product_id = p3.product_id\r\n    JOIN sales_events sx\r\n        ON r.order_id = sx.order_id\r\n    WHERE r.region REGEXP '${region:regex}'\r\n      AND p3.category REGEXP '${category:regex}'\r\n      AND sx.sales_channel REGEXP '${channel:regex}'\r\n    GROUP BY r.product_id\r\n) r\r\n    ON p.product_id = r.product_id\r\n\r\nWHERE p.category REGEXP '${category:regex}'\r\n\r\nGROUP BY p.category\r\nORDER BY return_rate_pct DESC;",
+                        "rawSql": "WITH unique_sales AS (\r\n    SELECT\r\n        s.order_id,\r\n        s.product_id,\r\n        s.region,\r\n        s.sales_channel,\r\n        s.quantity\r\n    FROM sales_events s\r\n    JOIN products p\r\n        ON s.product_id = p.product_id\r\n    WHERE s.region REGEXP '${region:regex}'\r\n      AND p.category REGEXP '${category:regex}'\r\n      AND s.sales_channel REGEXP '${channel:regex}'\r\n    GROUP BY\r\n        s.order_id,\r\n        s.product_id,\r\n        s.region,\r\n        s.sales_channel,\r\n        s.quantity\r\n),\r\n\r\nunique_returns AS (\r\n    SELECT\r\n        r.order_id,\r\n        r.product_id,\r\n        r.region,\r\n        r.quantity_returned\r\n    FROM returns_events r\r\n    JOIN products p\r\n        ON r.product_id = p.product_id\r\n    WHERE r.region REGEXP '${region:regex}'\r\n      AND p.category REGEXP '${category:regex}'\r\n      AND EXISTS (\r\n          SELECT 1\r\n          FROM sales_events s\r\n          WHERE s.order_id = r.order_id\r\n            AND s.sales_channel REGEXP '${channel:regex}'\r\n      )\r\n    GROUP BY\r\n        r.order_id,\r\n        r.product_id,\r\n        r.region,\r\n        r.quantity_returned\r\n),\r\n\r\nsales_by_category AS (\r\n    SELECT\r\n        p.category,\r\n        SUM(s.quantity) AS sold_qty\r\n    FROM unique_sales s\r\n    JOIN products p\r\n        ON s.product_id = p.product_id\r\n    GROUP BY p.category\r\n),\r\n\r\nreturns_by_category AS (\r\n    SELECT\r\n        p.category,\r\n        SUM(r.quantity_returned) AS returned_qty\r\n    FROM unique_returns r\r\n    JOIN products p\r\n        ON r.product_id = p.product_id\r\n    GROUP BY p.category\r\n)\r\n\r\nSELECT\r\n    s.category,\r\n    ROUND(\r\n        100.0 * COALESCE(r.returned_qty, 0)\r\n        / NULLIF(s.sold_qty, 0),\r\n        2\r\n    ) AS return_rate_pct\r\nFROM sales_by_category s\r\nLEFT JOIN returns_by_category r\r\n    ON s.category = r.category\r\nORDER BY return_rate_pct DESC;",
                         "sql": {
                           "columns": [
                             {
@@ -780,21 +780,15 @@
           },
           "vizConfig": {
             "kind": "VizConfig",
-            "group": "gauge",
+            "group": "stat",
             "version": "13.2.0",
             "spec": {
               "options": {
-                "barShape": "flat",
-                "barWidthFactor": 0.3,
-                "effects": {
-                  "barGlow": false,
-                  "centerGlow": false,
-                  "gradient": true
-                },
-                "endpointMarker": "point",
-                "minVizHeight": 75,
-                "minVizWidth": 75,
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
                 "orientation": "auto",
+                "percentChangeColorMode": "standard",
                 "reduceOptions": {
                   "calcs": [
                     "lastNotNull"
@@ -802,17 +796,13 @@
                   "fields": "",
                   "values": false
                 },
-                "segmentCount": 1,
-                "segmentSpacing": 0.3,
-                "shape": "gauge",
-                "showThresholdLabels": false,
-                "showThresholdMarkers": false,
-                "sizing": "auto",
-                "sparkline": false,
-                "textMode": "auto"
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
               },
               "fieldConfig": {
                 "defaults": {
+                  "unit": "currencyINR",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -822,7 +812,7 @@
                       },
                       {
                         "value": 80,
-                        "color": "red"
+                        "color": "green"
                       }
                     ]
                   },
@@ -1589,21 +1579,15 @@
           },
           "vizConfig": {
             "kind": "VizConfig",
-            "group": "gauge",
+            "group": "stat",
             "version": "13.2.0",
             "spec": {
               "options": {
-                "barShape": "flat",
-                "barWidthFactor": 0.54,
-                "effects": {
-                  "barGlow": false,
-                  "centerGlow": false,
-                  "gradient": true
-                },
-                "endpointMarker": "point",
-                "minVizHeight": 75,
-                "minVizWidth": 75,
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
                 "orientation": "auto",
+                "percentChangeColorMode": "standard",
                 "reduceOptions": {
                   "calcs": [
                     "lastNotNull"
@@ -1611,32 +1595,27 @@
                   "fields": "",
                   "values": false
                 },
-                "segmentCount": 1,
-                "segmentSpacing": 0.3,
-                "shape": "gauge",
-                "showThresholdLabels": false,
-                "showThresholdMarkers": true,
-                "sizing": "auto",
-                "sparkline": true,
-                "textMode": "auto"
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
               },
               "fieldConfig": {
                 "defaults": {
                   "unit": "currencyINR",
                   "thresholds": {
-                    "mode": "percentage",
+                    "mode": "absolute",
                     "steps": [
                       {
                         "value": 0,
-                        "color": "green"
+                        "color": "purple"
                       },
                       {
                         "value": 60,
-                        "color": "#EAB839"
+                        "color": "purple"
                       },
                       {
                         "value": 80,
-                        "color": "red"
+                        "color": "purple"
                       }
                     ]
                   },
@@ -2472,7 +2451,7 @@
             "kind": "RowsLayoutRow",
             "spec": {
               "title": "Products, Channels & Customers",
-              "collapse": true,
+              "collapse": false,
               "layout": {
                 "kind": "GridLayout",
                 "spec": {
@@ -2551,7 +2530,7 @@
             "kind": "RowsLayoutRow",
             "spec": {
               "title": "Inventory & Customer Engagement",
-              "collapse": true,
+              "collapse": false,
               "layout": {
                 "kind": "GridLayout",
                 "spec": {
@@ -2617,7 +2596,7 @@
             "kind": "RowsLayoutRow",
             "spec": {
               "title": "Returns & Financial Leakage",
-              "collapse": true,
+              "collapse": false,
               "layout": {
                 "kind": "AutoGridLayout",
                 "spec": {
